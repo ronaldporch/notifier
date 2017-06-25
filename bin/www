@@ -1,0 +1,178 @@
+#!/usr/bin/env node
+
+/**
+ * Module dependencies.
+ */
+
+var app = require('../app');
+var debug = require('debug')('notify:server');
+var http = require('http');
+var r = require('rethinkdb')
+var request = require('request')
+var nodemailer = require('nodemailer')
+
+var transporter = nodemailer.createTransport({
+    service: "Gmail",
+    auth: {
+        user: "youremail@gmail.com", // enter your email here
+        pass: "yourpassword" // enter your password here
+    }
+})
+
+/**
+ * Get port from environment and store in Express.
+ */
+
+var port = normalizePort(process.env.PORT || '3000');
+app.set('port', port);
+
+/**
+ * Create HTTP server.
+ */
+
+var server = http.createServer(app);
+var io = require('socket.io')(server)
+
+var connection = null
+intervals = {}
+
+let sendText = (body, api) => {
+  if (JSON.stringify(body).match(new RegExp(api.string,"g"))) {
+    var mailOptions = {
+  		from: 'Some Guy',
+  		to: 'youremail@gmail.com', // enter your email here
+  		subject: `String: ${api.string} Detected from ${api.name}`,
+  		text: `String: ${api.string} Detected from ${api.name}`,
+  		html: `String: ${api.string} Detected from ${api.name}`,
+  	}
+  	transporter.sendMail(mailOptions, function(err, info){
+  		if(err){
+  			throw err
+  		}
+  	})
+  }
+}
+r.connect({ host: 'localhost', port: 28015 }, (err, conn) => {
+  if (err) throw err
+  connection = conn
+  r.db('notifier').table('apis').changes().run(connection, (err, results) => {
+    if (err) return err
+    let y = (err, api) => {
+      if (api && api.new_val) {
+        let update = function () {
+          request(api.new_val.url, (err, res, body) => {
+            sendText(body, api.new_val)
+          })
+        }
+        clearInterval(intervals[api.new_val.id])
+        intervals[api.new_val.id] = setInterval(update, (api.new_val.interval * 1000 * 60))
+      }
+    }
+    results.each(y)
+  })
+  r.db('notifier').table('apis').run(connection, (err, results) => {
+    if (err) return err
+    results.toArray((err, apis) => {
+      apis.forEach(api => {
+        let update = function () {
+          request(api.url, (err, res, body) => {
+            sendText(body, api)
+          })
+        }
+        intervals[api.id] = setInterval(update, (api.interval * 1000 * 60))
+      })
+    })
+  })
+})
+
+io.on('connection', socket => {
+  r.db('notifier').table('apis').run(connection, (err, results) => {
+    if (err) return err
+    results.toArray((err, result) => {
+      if (err) return err
+      socket.emit('apis.read', result)
+    })
+  })
+  socket.on('apis.delete', (id) => {
+    r.db('notifier').table('apis').get(id).delete().run(connection, (err, result) => {
+      if (err) throw err
+    })
+  })
+  socket.on('apis.update', (apis) => {
+    r.expr(apis).forEach(api => { return r.expr(api)('id').count().gt(0).branch(
+      r.db('notifier').table('apis').get(api('id')).replace(api),
+      r.db('notifier').table('apis').insert( { name: api('name'), url: api('url'), interval: api('interval'), string: api('string') } )
+    )})
+      .run(connection, (err, result) => {
+        if (err) throw err
+      })
+  })
+})
+
+/**
+ * Listen on provided port, on all network interfaces.
+ */
+
+server.listen(port);
+server.on('error', onError);
+server.on('listening', onListening);
+
+/**
+ * Normalize a port into a number, string, or false.
+ */
+
+function normalizePort(val) {
+  var port = parseInt(val, 10);
+
+  if (isNaN(port)) {
+    // named pipe
+    return val;
+  }
+
+  if (port >= 0) {
+    // port number
+    return port;
+  }
+
+  return false;
+}
+
+/**
+ * Event listener for HTTP server "error" event.
+ */
+
+function onError(error) {
+  if (error.syscall !== 'listen') {
+    throw error;
+  }
+
+  var bind = typeof port === 'string'
+    ? 'Pipe ' + port
+    : 'Port ' + port;
+
+  // handle specific listen errors with friendly messages
+  switch (error.code) {
+    case 'EACCES':
+      console.error(bind + ' requires elevated privileges');
+      process.exit(1);
+      break;
+    case 'EADDRINUSE':
+      console.error(bind + ' is already in use');
+      process.exit(1);
+      break;
+    default:
+      throw error;
+  }
+}
+
+/**
+ * Event listener for HTTP server "listening" event.
+ */
+
+function onListening() {
+  var addr = server.address();
+  var bind = typeof addr === 'string'
+    ? 'pipe ' + addr
+    : 'port ' + addr.port;
+  debug('Listening on ' + bind);
+}

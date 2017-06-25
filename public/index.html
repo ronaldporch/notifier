@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <title>Notifier</title>
+    <script src="https://ajax.googleapis.com/ajax/libs/angularjs/1.6.4/angular.min.js"></script>
+    <script src="/socket.io/socket.io.js"></script>
+    <script src="./js/app.js"></script>
+    <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/css/bootstrap.min.css">
+  </head>
+  <body ng-app="notifier" ng-controller="notifierController">
+    <nav class="navbar navbar-default navbar-fixed-top">
+      <div class="container text-center">
+        <h1 style="margin-top: 8px;">Notifier</h1>
+      </div>
+    </nav>
+    <div class="container" style="padding-top: 55px;">
+      <div class="row">
+        <div class="col-md-12">
+          <form>
+            <table class="table">
+              <tr>
+                <th>API Name</th>
+                <th>URL</th>
+                <th>Interval (Minutes)</th>
+                <th>Checked String</th>
+                <th></th>
+              </tr>
+              <tr ng-repeat="api in apis track by $index">
+                <td><input type="text" ng-model="api.name"></td>
+                <td><input type="text" ng-model="api.url"></td>
+                <td><input type="number" ng-model="api.interval"></td>
+                <td><input type="text" ng-model="api.string"></td>
+                <td><button class="btn btn-danger" type="button" ng-click="deleteMonitor(api.id)">X</button></td>
+              </tr>
+              <tr>
+                <td><button class="btn btn-default" type="button" name="button" ng-click="addApi()">+ New Monitor</button>
+</td>
+              </tr>
+            </table>
+            <button class="btn btn-primary" type="submit" name="button" ng-click="update()">Submit</button>
+          </form>
+        </div>
+      </div>
+    </div>
+  </body>
+</html>
